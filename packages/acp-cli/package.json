@@ -1,0 +1,43 @@
+{
+  "name": "@xi-era/acp-cli",
+  "version": "0.1.0",
+  "description": "ACP (Agent-Component-Protocol) CLI — discover, invoke and debug remote ACP components; also serves local component modules.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "acp": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "keywords": [
+    "acp",
+    "cli",
+    "agent",
+    "component",
+    "protocol",
+    "mcp",
+    "iot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xi-era/acp-protocol.git",
+    "directory": "packages/acp-cli"
+  },
+  "homepage": "https://github.com/xi-era/acp-protocol",
+  "bugs": "https://github.com/xi-era/acp-protocol/issues",
+  "dependencies": {
+    "@xi-era/acp-sdk": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsup": "^8.3.0"
+  }
+}

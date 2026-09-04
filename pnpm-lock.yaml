@@ -33,6 +33,22 @@ importers:
         specifier: ^2.1.1
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/acp-cli:
+    dependencies:
+      '@xi-era/acp-sdk':
+        specifier: workspace:*
+        version: link:../acp-sdk-ts
+      commander:
+        specifier: ^12.1.0
+        version: 12.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.4
+        version: 22.20.1
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(postcss@8.5.28)(typescript@5.9.3)
+
   packages/acp-sdk-ts:
     dependencies:
       ajv:
@@ -730,6 +746,10 @@ packages:
 
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   commander@4.1.1:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
@@ -1844,6 +1864,8 @@ snapshots:
       color-name: 1.1.4
 
   color-name@1.1.4: {}
+
+  commander@12.1.0: {}
 
   commander@4.1.1: {}
 
