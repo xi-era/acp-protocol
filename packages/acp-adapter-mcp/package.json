@@ -1,0 +1,49 @@
+{
+  "name": "@xi-era/acp-adapter-mcp",
+  "version": "0.1.0",
+  "description": "ACP (Agent-Component-Protocol) <-> MCP bidirectional bridge — expose ACP components as MCP tools for Claude/Cursor, and wrap MCP tools as ACP components.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "acp-mcp": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "keywords": [
+    "acp",
+    "mcp",
+    "bridge",
+    "adapter",
+    "agent",
+    "iot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xi-era/acp-protocol.git",
+    "directory": "packages/acp-adapter-mcp"
+  },
+  "homepage": "https://github.com/xi-era/acp-protocol",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@xi-era/acp-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsup": "^8.3.0"
+  }
+}

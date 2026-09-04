@@ -1,0 +1,44 @@
+{
+  "name": "@xi-era/acp-adapter-openai",
+  "version": "0.1.0",
+  "description": "ACP (Agent-Component-Protocol) to OpenAI Tool-Call adapter — convert ACP component descriptors to OpenAI function tools and execute tool calls against ACP servers.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "keywords": [
+    "acp",
+    "openai",
+    "tool-call",
+    "adapter",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xi-era/acp-protocol.git",
+    "directory": "packages/acp-adapter-openai"
+  },
+  "homepage": "https://github.com/xi-era/acp-protocol",
+  "dependencies": {
+    "@xi-era/acp-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsup": "^8.3.0"
+  }
+}
