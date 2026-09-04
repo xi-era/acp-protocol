@@ -176,7 +176,7 @@ program
     ) => {
       try {
         const client = makeClient(url, opts);
-        const input = parseInput(inputJson, opts.file);
+        const input = parseInput(inputJson, opts.file) ?? {};
         if (opts.stream) {
           const reqId = `cli-${Date.now()}`;
           const request: AcpRequest = {

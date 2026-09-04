@@ -1,0 +1,18 @@
+{
+  "name": "@xi-era/example-iot-sensor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo 2: a virtual IoT sensor (remote hardware stand-in) as ACP components, including streamed readings.",
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@xi-era/acp-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsup": "^8.3.0"
+  }
+}
