@@ -95,18 +95,21 @@ export class StdioClientTransport implements ClientTransport {
   }
 
   async request(req: AcpRequest, _opts?: ClientRequestOptions): Promise<AcpServerMessage> {
-    this.#send(req);
-    const pending: Pending = { resolve: () => {}, chunks: [], notify: undefined, done: false };
+    // Create the promise (executor runs synchronously) and register pending
+    // BEFORE sending: streams are in flowing mode, so the server's reply can
+    // arrive synchronously within #send's write().
+    let resolveFn!: (msg: AcpServerMessage) => void;
+    const promise = new Promise<AcpServerMessage>((r) => (resolveFn = r));
+    const pending: Pending = { resolve: resolveFn, chunks: [], notify: undefined, done: false };
     this.#pending.set(req.id, pending);
-    return new Promise<AcpServerMessage>((resolve) => {
-      pending.resolve = resolve;
-    });
+    this.#send(req);
+    return promise;
   }
 
   async *requestStream(req: AcpRequest, _opts?: ClientRequestOptions): AsyncIterable<AcpServerMessage> {
-    this.#send(req);
     const pending: Pending = { resolve: () => {}, chunks: [], notify: undefined, done: false };
     this.#pending.set(req.id, pending);
+    this.#send(req);
     try {
       while (true) {
         while (pending.chunks.length > 0) {

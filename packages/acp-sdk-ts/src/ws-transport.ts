@@ -27,6 +27,7 @@ export interface WsServerTransportOptions {
 export class WsServerTransport implements ServerTransport {
   readonly #options: WsServerTransportOptions;
   #wss: WebSocketServer | undefined;
+  #connections = new Set<WebSocket>();
   #standaloneServer: HttpServer | undefined;
   #onUpgrade: ((req: IncomingMessage, socket: Duplex, head: Buffer) => void) | undefined;
 
@@ -38,6 +39,8 @@ export class WsServerTransport implements ServerTransport {
     this.#wss = new WebSocketServer({ noServer: true });
 
     this.#wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+      this.#connections.add(ws);
+      ws.on("close", () => this.#connections.delete(ws));
       const conn: Connection = {
         meta: { transport: "ws", ip: req.socket.remoteAddress },
         send: (msg) => ws.send(JSON.stringify(msg)),
@@ -83,6 +86,9 @@ export class WsServerTransport implements ServerTransport {
       this.#options.server?.off("upgrade", this.#onUpgrade);
       this.#onUpgrade = undefined;
     }
+    // Terminate open connections so close() doesn't wait on them.
+    for (const ws of this.#connections) ws.terminate();
+    this.#connections.clear();
     this.#wss?.close();
     this.#wss = undefined;
     const standalone = this.#standaloneServer;

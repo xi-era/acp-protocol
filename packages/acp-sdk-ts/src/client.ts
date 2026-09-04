@@ -163,7 +163,7 @@ export class AcpClient {
   async #fullRequest(req: Partial<AcpRequest>): Promise<AcpRequest> {
     return {
       ...req,
-      acp: this.#options.protocolVersion,
+      acp: req.acp ?? this.#options.protocolVersion,
       id: req.id ?? randomId(),
       op: req.op ?? "discover",
     };

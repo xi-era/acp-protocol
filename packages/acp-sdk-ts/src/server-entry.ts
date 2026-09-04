@@ -7,3 +7,6 @@ export * from "./registry.js";
 export * from "./server.js";
 export * from "./transport.js";
 export * from "./memory-transport.js";
+export * from "./http-transport.js";
+export * from "./ws-transport.js";
+export * from "./stdio-transport.js";

@@ -32,17 +32,11 @@ export type AcpErrorCodeValue = (typeof AcpErrorCode)[keyof typeof AcpErrorCode]
 
 /** Maps an ACP error code to its HTTP status (spec §8.1; 51xxx maps to 500). */
 export function acpCodeToHttpStatus(code: number): number {
-  const klass = Math.floor(code / 1000);
-  if (klass === 400) return 400;
-  if (klass === 401) return 401;
-  if (klass === 404) return 404;
-  if (klass === 405) return 405;
-  if (klass === 415) return 415;
-  if (klass === 422) return 422;
-  if (klass === 429) return 429;
-  if (klass === 503) return 503;
-  if (klass === 504) return 504;
-  if (klass === 502) return 502;
+  // 40000 -> 400, 40400 -> 404, 42200 -> 422, 50400 -> 504, ...
+  const http = Math.floor(code / 100);
+  if (http >= 510 && http <= 519) return 500; // stream segment
+  if (code === 50002) return 502; // UPSTREAM_ERROR
+  if (http >= 400 && http <= 599) return http;
   return 500;
 }
 
