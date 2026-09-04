@@ -1,0 +1,191 @@
+/**
+ * AcpClient (spec §3-6): discover / call / callStream over any ClientTransport.
+ * The transport is auto-selected from the URL scheme, or injected directly
+ * (e.g. MemoryClientTransport for tests and adapters).
+ */
+import { AcpError, AcpErrorCode } from "./errors.js";
+import { PROTOCOL_VERSION } from "./codec.js";
+import type { AcpRequest, AcpChunk, ComponentDescriptor } from "./types.js";
+import type { ClientRequestOptions, ClientTransport } from "./transport.js";
+
+export interface AcpClientOptions {
+  /**
+   * Endpoint URL: "http(s)://host:port/acp" or "ws(s)://host:port/acp".
+   * Ignored when `transport` is injected.
+   */
+  url?: string;
+  /** Per-call timeout in milliseconds; default 30000. */
+  timeoutMs?: number;
+  /** Protocol version to declare on requests; default "0.1". */
+  protocolVersion?: string;
+  /** HTTP headers (also merged into the WS handshake). */
+  headers?: Record<string, string>;
+  /** Injected transport; takes precedence over `url`. */
+  transport?: ClientTransport;
+}
+
+export interface AcpReply {
+  acp: string;
+  id: string | null;
+  ok: true;
+  result: unknown;
+}
+
+export class AcpClient {
+  readonly #options: Required<Omit<AcpClientOptions, "url" | "headers" | "transport">> &
+    Pick<AcpClientOptions, "headers">;
+  #transport: ClientTransport | undefined;
+  #transportFactory: () => Promise<ClientTransport>;
+
+  constructor(options: AcpClientOptions) {
+    this.#options = {
+      timeoutMs: options.timeoutMs ?? 30_000,
+      protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION,
+      headers: options.headers,
+    };
+    if (options.transport) {
+      const injected = options.transport;
+      this.#transportFactory = async () => injected;
+    } else {
+      if (!options.url) throw new Error("AcpClient requires either url or transport");
+      const url = options.url;
+      const headers = options.headers;
+      this.#transportFactory = async () => {
+        // Lazy dynamic imports keep ./client importable without Node built-ins.
+        const scheme = url.slice(0, url.indexOf(":")).toLowerCase();
+        if (scheme === "http" || scheme === "https") {
+          const { HttpClientTransport } = await import("./http-transport.js");
+          return new HttpClientTransport({ url, headers });
+        }
+        if (scheme === "ws" || scheme === "wss") {
+          const { WsClientTransport } = await import("./ws-transport.js");
+          return new WsClientTransport({ url, headers });
+        }
+        throw new Error(
+          `unsupported URL scheme: ${scheme} (use http(s):// or ws(s)://, or inject a transport)`
+        );
+      };
+    }
+  }
+
+  /** Establishes the connection (no-op for connectionless transports). */
+  async connect(): Promise<void> {
+    await (await this.#getTransportAsync()).connect();
+  }
+
+  /** Discover all components, or a single one by id (empty array when absent). */
+  async discover(componentId?: string, opts?: ClientRequestOptions): Promise<ComponentDescriptor[]> {
+    const req: Partial<AcpRequest> = { op: "discover" };
+    if (componentId !== undefined) req.component = componentId;
+    const reply = await this.#request(req, opts);
+    this.#assertOk(reply);
+    const result = reply.result as { components: ComponentDescriptor[] };
+    return result.components;
+  }
+
+  /** Single call; resolves with the bare result value. */
+  async call<T = unknown>(
+    componentId: string,
+    input?: unknown,
+    opts?: ClientRequestOptions
+  ): Promise<T> {
+    const reply = await this.#request({ op: "call", component: componentId, input }, opts);
+    this.#assertOk(reply);
+    return reply.result as T;
+  }
+
+  /**
+   * Streamed call; yields chunk payloads in seq order and completes after the
+   * end frame. Throws AcpError when an error frame terminates the stream.
+   */
+  async *callStream(
+    componentId: string,
+    input?: unknown,
+    opts?: ClientRequestOptions
+  ): AsyncGenerator<AcpChunk, void, undefined> {
+    const req: Partial<AcpRequest> = { op: "call", component: componentId, input, stream: true };
+    const transport = await this.#getTransportAsync();
+    const deadline = Date.now() + this.#options.timeoutMs;
+    for await (const msg of transport.requestStream(await this.#fullRequest(req), opts)) {
+      if ("chunk" in msg) {
+        yield msg.chunk;
+        if (msg.chunk.end) return;
+      } else if (msg.ok === false) {
+        throw AcpError.from(msg.error);
+      } else {
+        return; // one-shot reply to a stream request: nothing to iterate
+      }
+      if (Date.now() > deadline) {
+        throw new AcpError(AcpErrorCode.TIMEOUT, `stream timed out after ${this.#options.timeoutMs}ms`);
+      }
+    }
+  }
+
+  /** Low-level escape hatch: sends a full envelope and resolves with the reply. */
+  async request(
+    envelope: Partial<AcpRequest> & Record<string, unknown>,
+    opts?: ClientRequestOptions
+  ): Promise<AcpReply> {
+    const reply = await this.#request(envelope as AcpRequest, opts);
+    return reply as AcpReply;
+  }
+
+  async close(): Promise<void> {
+    await (await this.#getTransportAsync()).close();
+  }
+
+  async #getTransportAsync(): Promise<ClientTransport> {
+    this.#transport ??= await this.#transportFactory();
+    return this.#transport;
+  }
+
+  #assertOk(reply: AcpServerMessage): asserts reply is Extract<AcpServerMessage, { ok: true }> {
+    if (!("ok" in reply) || reply.ok !== true) {
+      const error =
+        "error" in reply
+          ? reply.error
+          : { code: 50000, message: "unexpected reply shape" };
+      throw AcpError.from(error);
+    }
+  }
+
+  async #request(req: Partial<AcpRequest>, opts?: ClientRequestOptions): Promise<AcpServerMessage> {
+    const transport = await this.#getTransportAsync();
+    const full = await this.#fullRequest(req);
+    const reply = await withTimeout(
+      transport.request(full, opts),
+      this.#options.timeoutMs,
+      full.id
+    );
+    return reply;
+  }
+
+  async #fullRequest(req: Partial<AcpRequest>): Promise<AcpRequest> {
+    return {
+      ...req,
+      acp: this.#options.protocolVersion,
+      id: req.id ?? randomId(),
+      op: req.op ?? "discover",
+    };
+  }
+}
+
+type AcpServerMessage =
+  | { acp: string; id: string; ok: true; result: unknown }
+  | { acp: string; id: string | null; ok: false; error: { code: number; message: string; data?: unknown } }
+  | { acp: string; id: string; chunk: AcpChunk };
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, id: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new AcpError(AcpErrorCode.TIMEOUT, `call ${id} timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function randomId(): string {
+  return `acp-${globalThis.crypto.randomUUID()}`;
+}

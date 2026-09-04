@@ -1,0 +1,58 @@
+{
+  "name": "@xi-era/acp-sdk",
+  "version": "0.1.0",
+  "description": "ACP (Agent-Component-Protocol) SDK & CLI — Lightweight component call protocol for AI Agent, focusing on remote service, IoT hardware and distributed business components. Bidirectional compatible with MCP & OpenAI Tool-Call.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "keywords": [
+    "acp",
+    "agent",
+    "component",
+    "protocol",
+    "mcp",
+    "iot",
+    "distributed",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xi-era/acp-protocol.git",
+    "directory": "packages/acp-sdk-ts"
+  },
+  "homepage": "https://github.com/xi-era/acp-protocol",
+  "bugs": "https://github.com/xi-era/acp-protocol/issues",
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/ws": "^8.5.12",
+    "tsup": "^8.3.0"
+  }
+}

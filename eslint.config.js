@@ -9,8 +9,10 @@ export default tseslint.config(
   },
   {
     rules: {
+      "no-undef": "off", // TypeScript handles undefined globals; no-undef misfires on Node built-ins
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": "error",
+      "@typescript-eslint/no-explicit-any": "off", // protocol boundary code needs deliberate any
     },
   }
 );
