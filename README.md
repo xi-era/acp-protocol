@@ -23,6 +23,7 @@ MCP 聚焦本地子进程工具调用;
 - Repo: <https://github.com/xi-era/acp-protocol>
 - NPM: `@xi-era/acp-sdk` / `@xi-era/acp-cli`
 - 协议规范: [spec/ACP-0.1-SPEC.md](spec/ACP-0.1-SPEC.md)
+- 企业版与商业合作: [COMMERCIAL.md](COMMERCIAL.md)
 
 ---
 
@@ -179,4 +180,9 @@ ACP 不做重复的 AI 对话工具、编码工具。
 
 ## 十二、License
 
-[MIT](LICENSE)
+本仓库(协议规范、SDK、CLI、适配器、示例)以 [MIT](LICENSE) 许可发布,**永久免费开源**,允许任意商业与非商业使用。
+
+> **Open-core 边界说明**:面向企业的 ACP-Gateway(注册中心、权限管控、审计溯源、限流、SSO)、私有化部署包等商业闭源产品是**独立于本仓库的单独产品**,不适用本 MIT 许可,由 xi-era / Stellxis 另行授权。详见 [COMMERCIAL.md](COMMERCIAL.md) 与上方「商业定位」。
+
+
+
