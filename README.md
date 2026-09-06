@@ -174,9 +174,10 @@ ACP 不做重复的 AI 对话工具、编码工具。
 
 ## 十一、路线图
 
-- **v0.1(MVP)**:协议规范、TypeScript SDK、CLI、MCP/OpenAI 适配器、Demo — 详见 [docs/roadmap.md](docs/roadmap.md)
-- **v0.2(生态扩展)**:Python/Go SDK、心跳保活、报文压缩、LangChain 集成、元件模板库
-- **v1.0(商业化)**:ACP-Gateway、权限管控、审计溯源、SSO、私有化部署
+- ✅ **v0.1(MVP)**:协议规范、TypeScript SDK、CLI、MCP/OpenAI 适配器、Demo — 详见 [docs/roadmap.md](docs/roadmap.md)
+- ✅ **v0.2(生态扩展)**:心跳保活(`$ping`)、事件推送(`$event`)、报文压缩(gzip / permessage-deflate)、[Python SDK](sdk/python/README.md)(含 LangChain 集成)、[Go SDK](go/)、[元件模板库](templates/)、[Cursor 桥接指南](docs/guides/cursor-mcp-bridge.md)、三方互操作测试 — 变更清单见 [CHANGELOG](CHANGELOG.md)
+- ⬜ **v0.2.1**:Python `[aio]` extras(aiohttp `AsyncAcpClient`,在 CI 上验证 asyncio 路径)
+- ⬜ **v1.0(商业化)**:ACP-Gateway、权限管控、审计溯源、SSO、私有化部署
 
 ## 十二、License
 

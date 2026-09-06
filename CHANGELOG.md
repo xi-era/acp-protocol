@@ -23,7 +23,7 @@ Protocol evolution per [roadmap v0.2](docs/roadmap.md): heartbeat, compression, 
 ### Added — SDKs
 
 - **`@xi-era/acp-sdk` 0.2.0** (TypeScript): server `emit()` + per-connection subscription registry with `TransportLifecycle` hooks; client `subscribe()` with auto-resubscribe on reconnect, keepalive timers, gzip request/response on the HTTP transport, permessage-deflate on WS, version fallback; `acp ping` CLI command
-- **`acp-protocol-sdk` 0.2.0** (Python, import `acp`): sync-first API mirroring the TS SDK (`@server.component` decorator, discover/call/call_stream/subscribe), HTTP+WS on one port via `websockets` (sole runtime dependency), stdio/memory transports, `$ping` keepalive, event subscriptions; extras: `[aio]` (aiohttp async client), `[langchain]` (ACP components → LangChain StructuredTool with a draft-07 → pydantic args-schema converter)
+- **`acp-protocol-sdk` 0.2.0** (Python, import `acp`): sync-first API mirroring the TS SDK (`@server.component` decorator, discover/call/call_stream/subscribe), stdio/memory/HTTP/WS transports, `$ping` keepalive, event subscriptions; `[langchain]` extra (ACP components → LangChain StructuredTool with a draft-07 → pydantic args-schema converter). Note: HTTP and WS listen on separate ports (websockets rejects non-GET before `process_request`; `listen()` returns the WS port, `server.http_port` carries HTTP). Deferred to 0.2.1: `[aio]` extra (aiohttp `AsyncAcpClient`).
 - **`github.com/xi-era/acp-protocol/go` 0.2.0** (Go, `go/acp`): context-first API (`Server.Handler()` serves HTTP+WS on one port, `iter.Seq2` streaming, `Emit`, `Subscribe`, keepalive), `coder/websocket` with built-in permessage-deflate, cross-transport conformance tests
 
 ### Added — Ecosystem
