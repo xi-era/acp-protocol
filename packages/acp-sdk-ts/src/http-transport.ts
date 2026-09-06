@@ -3,6 +3,7 @@
  * streaming = NDJSON. Server reuses node:http; client uses fetch.
  */
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
+import { gzipSync, createGunzip } from "node:zlib";
 import { AcpErrorCode, acpCodeToHttpStatus } from "./errors.js";
 import { PROTOCOL_VERSION, errorEnvelope } from "./codec.js";
 import type { AcpRequest, AcpServerMessage } from "./types.js";
@@ -18,16 +19,18 @@ export interface HttpServerTransportOptions {
   /** Port when no server is supplied; default 0 (ephemeral). */
   port?: number;
   host?: string;
+  /** gzip responses at or above this size when the client accepts it; 0 disables. Default 1024 (spec v0.2 §9.4). */
+  compressThresholdBytes?: number;
 }
 
 export class HttpServerTransport implements ServerTransport {
-  readonly #options: HttpServerTransportOptions;
+  readonly #options: HttpServerTransportOptions & { compressThresholdBytes: number };
   #server: HttpServer | undefined;
   #ownsServer = false;
   #dispatch: ServerDispatch | undefined;
 
   constructor(options: HttpServerTransportOptions = {}) {
-    this.#options = options;
+    this.#options = { ...options, compressThresholdBytes: options.compressThresholdBytes ?? 1024 };
   }
 
   /** Actual port after start() (useful when started with port 0). */
@@ -117,8 +120,7 @@ export class HttpServerTransport implements ServerTransport {
           res.write(line + "\n");
         } else {
           const status = "ok" in msg && msg.ok === false ? acpCodeToHttpStatus(msg.error.code) : 200;
-          res.writeHead(status, { "content-type": "application/json" });
-          res.end(line);
+          this.#writeBuffered(res, status, line);
         }
       },
       close: async () => {
@@ -139,6 +141,24 @@ export class HttpServerTransport implements ServerTransport {
     }
   }
 
+  /** Writes a buffered response, gzip-compressing at/above the threshold (spec v0.2 §9.4). */
+  #writeBuffered(res: ServerResponse, status: number, body: string): void {
+    const acceptsGzip = acceptEncoding(res).includes("gzip");
+    const threshold = this.#options.compressThresholdBytes;
+    if (acceptsGzip && threshold > 0 && Buffer.byteLength(body) >= threshold) {
+      const gzipped = gzipSync(Buffer.from(body, "utf8"));
+      res.writeHead(status, {
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+        "vary": "Accept-Encoding",
+      });
+      res.end(gzipped);
+      return;
+    }
+    res.writeHead(status, { "content-type": "application/json", "vary": "Accept-Encoding" });
+    res.end(body);
+  }
+
   async #handleGetDiscover(res: ServerResponse): Promise<void> {
     let reply: AcpServerMessage | undefined;
     const conn: Connection = {
@@ -150,20 +170,35 @@ export class HttpServerTransport implements ServerTransport {
     };
     await this.#dispatch!({ acp: PROTOCOL_VERSION, id: `get-${Date.now()}`, op: "discover" }, conn);
     const status = reply && "ok" in reply && reply.ok === false ? acpCodeToHttpStatus(reply.error.code) : 200;
-    res.writeHead(status, { "content-type": "application/json" });
-    res.end(JSON.stringify(reply && "ok" in reply && reply.ok === true ? reply.result : reply));
+    const body = JSON.stringify(reply && "ok" in reply && reply.ok === true ? reply.result : reply);
+    this.#writeBuffered(res, status, body);
   }
 
   #replyError(res: ServerResponse, id: string | null, code: number, message: string): void {
-    const body = errorEnvelope(id, code, message);
-    res.writeHead(acpCodeToHttpStatus(code), { "content-type": "application/json" });
-    res.end(JSON.stringify(body));
+    const body = JSON.stringify(errorEnvelope(id, code, message));
+    this.#writeBuffered(res, acpCodeToHttpStatus(code), body);
   }
+}
+
+/** Reads accept-encoding from the response's backing request. */
+function acceptEncoding(res: ServerResponse): string {
+  return String(res.req?.headers["accept-encoding"] ?? "");
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    const encoding = String(req.headers["content-encoding"] ?? "").toLowerCase();
+    if (encoding.includes("gzip")) {
+      // Decompress gzip request bodies (spec v0.2 §9.4).
+      const gunzip = createGunzip();
+      req.pipe(gunzip);
+      const parts: Buffer[] = [];
+      gunzip.on("data", (c: Buffer) => parts.push(c));
+      gunzip.on("end", () => resolve(Buffer.concat(parts).toString("utf8")));
+      gunzip.on("error", reject);
+      return;
+    }
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);

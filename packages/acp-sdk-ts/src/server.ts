@@ -385,6 +385,11 @@ export class AcpServer {
     };
   }
 
+  /** Connection lifecycle for wiring custom transports (stdio pair tests etc.). */
+  get connectionLifecycle(): TransportLifecycle {
+    return this.#lifecycle();
+  }
+
   /**
    * Starts HTTP + WebSocket on the same port (POST http://host:port/acp handles
    * envelopes; ws://host:port/acp upgrades; GET /acp/discover for browsing).

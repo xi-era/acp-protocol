@@ -7,9 +7,9 @@ import WebSocket, { WebSocketServer } from "ws";
 import { createServer as createHttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
-import { AcpErrorCode } from "./errors.js";
+import { AcpError, AcpErrorCode } from "./errors.js";
 import { PROTOCOL_VERSION, errorEnvelope } from "./codec.js";
-import type { AcpRequest, AcpServerMessage } from "./types.js";
+import type { AcpEvent, AcpRequest, AcpServerMessage } from "./types.js";
 import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport, TransportLifecycle } from "./transport.js";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +45,7 @@ export class WsServerTransport implements ServerTransport {
         meta: { transport: "ws", ip: req.socket.remoteAddress },
         send: (msg) => ws.send(JSON.stringify(msg)),
         close: async () => ws.close(),
+        eventBacklog: () => ws.bufferedAmount,
       };
       lifecycle?.onConnection?.(conn);
       ws.on("close", () => lifecycle?.onDisconnect?.(conn));
@@ -117,35 +118,61 @@ export interface WsClientTransportOptions {
   headers?: Record<string, string>;
 }
 
+export interface WsClientTransportOptions {
+  url: string;
+  headers?: Record<string, string>;
+  /** Idle-time keepalive interval in ms via `$ping` (spec v0.2 §4.3); 0 disables. Default 30000. */
+  keepAliveMs?: number;
+  /** `$ping` reply timeout in ms; exceeding it kills the connection. Default 10000. */
+  pongTimeoutMs?: number;
+}
+
 export class WsClientTransport implements ClientTransport {
   readonly #url: string;
   readonly #headers: Record<string, string>;
+  readonly #keepAliveMs: number;
+  readonly #pongTimeoutMs: number;
   #ws: WebSocket | undefined;
   #pending = new Map<string, Pending>();
+  #eventHandlers = new Set<(event: AcpEvent) => void>();
+  #closedByUser = false;
+  #kaTimer: ReturnType<typeof setTimeout> | undefined;
+  #pongTimer: ReturnType<typeof setTimeout> | undefined;
+  #kaSeq = 0;
+  #keepaliveSupported = true;
 
   constructor(options: WsClientTransportOptions) {
     this.#url = options.url;
     this.#headers = options.headers ?? {};
+    this.#keepAliveMs = options.keepAliveMs ?? 30_000;
+    this.#pongTimeoutMs = options.pongTimeoutMs ?? 10_000;
   }
 
   async connect(): Promise<void> {
     if (this.#ws) return;
+    this.#closedByUser = false;
     const ws = new WebSocket(this.#url, { headers: this.#headers });
     await new Promise<void>((resolve, reject) => {
       ws.once("open", resolve);
       ws.once("error", reject);
     });
     ws.on("message", (data: unknown) => this.#onMessage(String(data)));
-    ws.on("close", () => this.#failAll("connection closed"));
+    ws.on("close", () => this.#onSocketClosed());
     ws.on("error", () => {});
     this.#ws = ws;
+    // Auto-resubscribe after reconnect (spec v0.2 §4.4: SDK responsibility).
+    for (const filter of this.#subscriptions.values()) {
+      void this.request({ acp: PROTOCOL_VERSION, id: `resub-${++this.#kaSeq}`, op: "$subscribe", input: filter } as AcpRequest).catch(() => {});
+    }
+    this.#armKeepalive();
   }
 
   async request(req: AcpRequest, _opts?: ClientRequestOptions): Promise<AcpServerMessage> {
     const ws = this.#assertConnected();
     const pending: Pending = { resolve: () => {}, chunks: [], notify: undefined, done: false };
     this.#pending.set(req.id, pending);
-    ws.send(JSON.stringify(req));
+    this.#trackSubscription(req);
+    this.#sendFrame(ws, req);
     const msg = await new Promise<AcpServerMessage>((resolve) => {
       pending.resolve = resolve;
     });
@@ -153,11 +180,22 @@ export class WsClientTransport implements ClientTransport {
     return msg;
   }
 
+  #subscriptions = new Map<string, { component?: string; tags?: string[] }>();
+
+  #trackSubscription(req: AcpRequest): void {
+    if (req.op === "$subscribe") {
+      this.#subscriptions.set(JSON.stringify(req.input ?? {}), (req.input ?? {}) as { component?: string; tags?: string[] });
+    } else if (req.op === "$unsubscribe") {
+      if (req.input === undefined || req.input === null) this.#subscriptions.clear();
+      else this.#subscriptions.delete(JSON.stringify(req.input));
+    }
+  }
+
   async *requestStream(req: AcpRequest, _opts?: ClientRequestOptions): AsyncIterable<AcpServerMessage> {
     const ws = this.#assertConnected();
     const pending: Pending = { resolve: () => {}, chunks: [], notify: undefined, done: false };
     this.#pending.set(req.id, pending);
-    ws.send(JSON.stringify(req));
+    this.#sendFrame(ws, req);
 
     try {
       while (true) {
@@ -178,6 +216,8 @@ export class WsClientTransport implements ClientTransport {
   async close(): Promise<void> {
     const ws = this.#ws;
     this.#ws = undefined;
+    this.#closedByUser = true;
+    this.#disarmKeepalive();
     this.#failAll("client closed");
     if (!ws) return;
     await new Promise<void>((resolve) => {
@@ -186,9 +226,85 @@ export class WsClientTransport implements ClientTransport {
     });
   }
 
+  eventsSupported(): boolean {
+    return true;
+  }
+
+  onEvent(handler: (event: AcpEvent) => void): () => void {
+    this.#eventHandlers.add(handler);
+    return () => this.#eventHandlers.delete(handler);
+  }
+
   #assertConnected(): WebSocket {
     if (!this.#ws) throw new Error("ws transport not connected — call connect() first");
     return this.#ws;
+  }
+
+  #sendFrame(ws: WebSocket, frame: unknown): void {
+    ws.send(JSON.stringify(frame));
+    if (this.#keepAliveMs > 0 && this.#keepaliveSupported) this.#armKeepalive(); // reset idle timer
+  }
+
+  // -------------------------------------------------------------------------
+  // Keepalive (spec v0.2 §4.3): idle $ping with pong timeout -> dead conn
+  // -------------------------------------------------------------------------
+
+  #armKeepalive(): void {
+    this.#disarmKeepalive();
+    if (this.#keepAliveMs <= 0 || !this.#keepaliveSupported) return;
+    this.#kaTimer = setTimeout(() => void this.#sendPing(), this.#keepAliveMs);
+  }
+
+  #disarmKeepalive(): void {
+    if (this.#kaTimer) clearTimeout(this.#kaTimer);
+    if (this.#pongTimer) clearTimeout(this.#pongTimer);
+    this.#kaTimer = undefined;
+    this.#pongTimer = undefined;
+  }
+
+  async #sendPing(): Promise<void> {
+    const ws = this.#ws;
+    if (!ws || this.#keepaliveSupported === false) return;
+    const id = `ka-${++this.#kaSeq}`;
+    const sentAt = Date.now();
+    this.#startPongTimer();
+    try {
+      await this.request({ acp: PROTOCOL_VERSION, id, op: "$ping", input: { ts: sentAt } } as AcpRequest);
+      // Reply arrived: connection alive; arm the next idle ping.
+      this.#armKeepalive();
+    } catch (error) {
+      if (error instanceof AcpError && error.code === AcpErrorCode.UNKNOWN_OP) {
+        // 0.1 server: permanently disable keepalive on this connection.
+        this.#keepaliveSupported = false;
+        this.#disarmKeepalive();
+        return;
+      }
+      // Timeout / dead connection: terminate; close handler decides on reconnect.
+      ws.terminate();
+    }
+  }
+
+  #startPongTimer(): void {
+    if (this.#pongTimer) clearTimeout(this.#pongTimer);
+    this.#pongTimer = setTimeout(() => {
+      this.#ws?.terminate();
+    }, this.#pongTimeoutMs);
+  }
+
+  #onSocketClosed(): void {
+    this.#disarmKeepalive();
+    this.#failAll("connection closed");
+    this.#ws = undefined;
+    // Reconnect unless the user closed the transport (basic retry, 1s).
+    if (!this.#closedByUser) {
+      setTimeout(() => {
+        if (!this.#closedByUser && !this.#ws) {
+          this.connect().catch(() => {
+            setTimeout(() => this.#onSocketClosed(), 1000);
+          });
+        }
+      }, 1000);
+    }
   }
 
   #onMessage(text: string): void {
@@ -198,8 +314,21 @@ export class WsClientTransport implements ClientTransport {
     } catch {
       return;
     }
+    if ("event" in msg) {
+      for (const h of this.#eventHandlers) h(msg.event);
+      return;
+    }
+    if ("op" in msg && msg.op === "$ping") {
+      // Server-initiated keepalive: MUST answer (spec v0.2 §4.3).
+      const input = ((msg as AcpRequest).input ?? {}) as { ts?: number };
+      const result: { pong: number; ts?: number } = { pong: Date.now() };
+      if (typeof input.ts === "number") result.ts = input.ts;
+      this.#ws?.send(JSON.stringify({ acp: msg.acp, id: msg.id, ok: true, result }));
+      return;
+    }
     const pending = this.#pending.get(msg.id ?? "");
     if (!pending) return;
+    if ("ok" in msg && msg.ok === true) this.#disarmPongTimer(msg.id ?? "");
     const isTerminal =
       "ok" in msg || ("chunk" in msg && msg.chunk.end === true);
     if (isTerminal) {
@@ -211,6 +340,11 @@ export class WsClientTransport implements ClientTransport {
       pending.chunks.push(msg);
       pending.notify?.();
     }
+  }
+
+  #disarmPongTimer(_id: string): void {
+    if (this.#pongTimer) clearTimeout(this.#pongTimer);
+    this.#pongTimer = undefined;
   }
 
   #failAll(reason: string): void {

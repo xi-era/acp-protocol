@@ -17,12 +17,16 @@ export interface AcpClientOptions {
   url?: string;
   /** Per-call timeout in milliseconds; default 30000. */
   timeoutMs?: number;
-  /** Protocol version to declare on requests; default "0.1". */
+  /** Protocol version to declare on requests; default "0.2". */
   protocolVersion?: string;
   /** HTTP headers (also merged into the WS handshake). */
   headers?: Record<string, string>;
   /** Injected transport; takes precedence over `url`. */
   transport?: ClientTransport;
+  /** WS keepalive idle interval via `$ping` (spec v0.2 §4.3); 0 disables. Default 30000. */
+  keepAliveMs?: number;
+  /** `$ping` reply timeout; exceeding it kills and reconnects the WS. Default 10000. */
+  pongTimeoutMs?: number;
 }
 
 export interface AcpReply {
@@ -53,6 +57,8 @@ export class AcpClient {
     this.#options = {
       timeoutMs: options.timeoutMs ?? 30_000,
       protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION,
+      keepAliveMs: options.keepAliveMs ?? 30_000,
+      pongTimeoutMs: options.pongTimeoutMs ?? 10_000,
       headers: options.headers,
     };
     if (options.transport) {
@@ -71,7 +77,12 @@ export class AcpClient {
         }
         if (scheme === "ws" || scheme === "wss") {
           const { WsClientTransport } = await import("./ws-transport.js");
-          return new WsClientTransport({ url, headers });
+          return new WsClientTransport({
+            url,
+            headers,
+            keepAliveMs: this.#options.keepAliveMs,
+            pongTimeoutMs: this.#options.pongTimeoutMs,
+          });
         }
         throw new Error(
           `unsupported URL scheme: ${scheme} (use http(s):// or ws(s)://, or inject a transport)`
@@ -196,14 +207,31 @@ export class AcpClient {
     }
   }
 
+  #fallbackTried = false;
+
   async #request(req: Partial<AcpRequest>, opts?: ClientRequestOptions): Promise<AcpServerMessage> {
     const transport = await this.#getTransportAsync();
     const full = await this.#fullRequest(req);
-    const reply = await withTimeout(
-      transport.request(full, opts),
-      this.#options.timeoutMs,
-      full.id
-    );
+    let reply: AcpServerMessage;
+    try {
+      reply = await withTimeout(transport.request(full, opts), this.#options.timeoutMs, full.id);
+    } catch (error) {
+      // Fallback ladder step 1 (spec v0.2 §12.2): on 40003, retry once with the
+      // highest server-supported version and lock it for this client.
+      if (
+        error instanceof AcpError &&
+        error.code === AcpErrorCode.UNSUPPORTED_VERSION &&
+        !this.#fallbackTried
+      ) {
+        const best = pickHighestSupported(error.data);
+        if (best && best !== this.#options.protocolVersion) {
+          this.#options.protocolVersion = best;
+          this.#fallbackTried = true;
+          return this.#request(req, opts);
+        }
+      }
+      throw error;
+    }
     return reply;
   }
 
@@ -236,4 +264,17 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, id: string): Pro
 
 function randomId(): string {
   return `acp-${globalThis.crypto.randomUUID()}`;
+}
+
+/** Picks the highest version from a 40003 `data.supported` payload. */
+function pickHighestSupported(data: unknown): string | undefined {
+  const supported = (data as { supported?: unknown } | undefined)?.supported;
+  if (!Array.isArray(supported)) return undefined;
+  const versions = supported
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => ({ v, parts: /^(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number) ?? null }))
+    .filter((x): x is { v: string; parts: [number, number] } => x.parts !== null);
+  if (versions.length === 0) return undefined;
+  versions.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1]);
+  return versions[0]?.v;
 }

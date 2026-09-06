@@ -12,6 +12,10 @@ export interface ConformanceContext {
   protocolVersion?: string;
   /** Sends raw non-JSON text; used to assert PARSE_ERROR. Optional per transport. */
   sendRaw?: (text: string) => Promise<{ ok: false; error: { code: number } }>;
+  /** Server-side event emitter for the $event cases; omit when unsupported. */
+  emit?: (component: string, data: unknown) => void;
+  /** Component id to subscribe to for event cases (default "conf.echo"). */
+  eventComponent?: string;
 }
 
 export async function runConformanceSuite(ctx: ConformanceContext): Promise<void> {
@@ -73,6 +77,29 @@ export async function runConformanceSuite(ctx: ConformanceContext): Promise<void
   // spec v0.2 §5.3: responses echo the request's acp value
   const echo = await client.request({ op: "discover" });
   expect((echo as { acp?: string }).acp ?? "absent").toBe("0.2");
+
+  // spec v0.2 §4.3: $ping roundtrip
+  const ping = await client.request({ op: "$ping", input: { ts: 42 } });
+  expect(ping.ok).toBe(true);
+  const pong = (ping.result as { pong: number; ts: number });
+  expect(pong.ts).toBe(42);
+  expect(typeof pong.pong).toBe("number");
+
+  // spec v0.2 §4.4/§6.2: subscribe -> emit -> event -> unsubscribe
+  if (ctx.emit) {
+    const component = ctx.eventComponent ?? "conf.echo";
+    const received: unknown[] = [];
+    const sub = await client.subscribe({ component }, (ev) => received.push(ev.data));
+    const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 20)); // WS delivery is async
+    ctx.emit(component, "evt-1");
+    ctx.emit(component, "evt-2");
+    await flush();
+    expect(received).toEqual(["evt-1", "evt-2"]);
+    await sub.unsubscribe();
+    ctx.emit(component, "evt-3");
+    await flush();
+    expect(received).toEqual(["evt-1", "evt-2"]);
+  }
 
   // spec §13 meta ignored
   const withMeta = await client.request({

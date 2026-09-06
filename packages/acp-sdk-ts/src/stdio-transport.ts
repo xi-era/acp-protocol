@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { AcpErrorCode } from "./errors.js";
 import { errorEnvelope } from "./codec.js";
-import type { AcpRequest, AcpServerMessage } from "./types.js";
+import type { AcpEvent, AcpRequest, AcpServerMessage } from "./types.js";
 import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport, TransportLifecycle } from "./transport.js";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +79,7 @@ export class StdioClientTransport implements ClientTransport {
   readonly #input: Readable;
   readonly #output: Writable;
   #pending = new Map<string, Pending>();
+  #eventHandlers = new Set<(event: AcpEvent) => void>();
   #started = false;
   #buffer = "";
 
@@ -136,6 +137,15 @@ export class StdioClientTransport implements ClientTransport {
 
   async close(): Promise<void> {}
 
+  eventsSupported(): boolean {
+    return true;
+  }
+
+  onEvent(handler: (event: AcpEvent) => void): () => void {
+    this.#eventHandlers.add(handler);
+    return () => this.#eventHandlers.delete(handler);
+  }
+
   #send(req: AcpRequest): void {
     this.#output.write(JSON.stringify(req) + "\n");
   }
@@ -145,6 +155,18 @@ export class StdioClientTransport implements ClientTransport {
     try {
       msg = JSON.parse(line) as AcpServerMessage;
     } catch {
+      return;
+    }
+    if ("event" in msg) {
+      for (const h of this.#eventHandlers) h(msg.event);
+      return;
+    }
+    if ("op" in msg && msg.op === "$ping") {
+      // Server-initiated keepalive: MUST answer (spec v0.2 §4.3).
+      const input = ((msg as AcpRequest).input ?? {}) as { ts?: number };
+      const result: { pong: number; ts?: number } = { pong: Date.now() };
+      if (typeof input.ts === "number") result.ts = input.ts;
+      this.#output.write(JSON.stringify({ acp: msg.acp, id: msg.id, ok: true, result }) + "\n");
       return;
     }
     const pending = this.#pending.get(msg.id ?? "");

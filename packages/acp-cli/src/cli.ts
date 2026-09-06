@@ -290,4 +290,31 @@ program
     }
   });
 
+// ---------------------------------------------------------------------------
+// acp ping
+// ---------------------------------------------------------------------------
+program
+  .command("ping")
+  .description("measure RTT to an ACP server via the $ping keepalive op")
+  .argument("<url>", "server base URL")
+  .option("--timeout <ms>", "call timeout in milliseconds")
+  .action(async (url: string, opts: CommonOpts) => {
+    try {
+      const client = makeClient(url, opts);
+      const sentAt = Date.now();
+      const reply = await client.request({ op: "$ping", input: { ts: sentAt } });
+      const rtt = Date.now() - sentAt;
+      const result = (reply as { ok?: boolean; result?: { pong?: number } }).result;
+      const serverClockDelta =
+        typeof result?.pong === "number" ? result.pong - sentAt - rtt : undefined;
+      console.log(`rtt: ${rtt}ms`);
+      if (serverClockDelta !== undefined && Number.isFinite(serverClockDelta)) {
+        console.log(`server clock delta (approx): ${serverClockDelta >= 0 ? "+" : ""}${serverClockDelta}ms`);
+      }
+      await client.close();
+    } catch (e) {
+      fail(e);
+    }
+  });
+
 program.parseAsync(process.argv).catch(fail);

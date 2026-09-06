@@ -50,7 +50,10 @@ describe("conformance: Stdio", () => {
     server = makeServer();
     const serverInput = new PassThrough();
     const serverOutput = new PassThrough();
-    await new StdioServerTransport({ input: serverInput, output: serverOutput }).start(server.handle);
+    await new StdioServerTransport({ input: serverInput, output: serverOutput }).start(
+      server.handle,
+      server.connectionLifecycle
+    );
     client = new AcpClient({
       transport: new StdioClientTransport({ input: serverOutput, output: serverInput }),
       timeoutMs: 5_000,
@@ -66,12 +69,16 @@ describe("conformance: Stdio", () => {
   it("passes the conformance suite", async () => {
     await runConformanceSuite({
       client,
+      emit: (c, d) => server.emit({ component: c, data: d }),
       sendRaw: async (text) => {
         // One-off stream pair; read the reply line directly to observe the
         // PARSE_ERROR frame (id: null) that pending-by-id routing would drop.
         const inOnce = new PassThrough();
         const outOnce = new PassThrough();
-        await new StdioServerTransport({ input: inOnce, output: outOnce }).start(server.handle);
+        await new StdioServerTransport({ input: inOnce, output: outOnce }).start(
+          server.handle,
+          server.connectionLifecycle
+        );
         inOnce.write(text + "\n");
         const line = await new Promise<string>((resolve) =>
           outOnce.once("data", (d) => resolve(String(d).trim()))
