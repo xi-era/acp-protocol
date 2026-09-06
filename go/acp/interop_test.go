@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -39,7 +40,8 @@ func TestInteropWithTSServer(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 	cmd := exec.Command("node", filepath.Join(repoRoot, "scripts", "interop", "ts-server.mjs"), fmt.Sprint(port))
-	cmd.Stderr = t.Output()
+	// NB: (*testing.T).Output() only exists since Go 1.26; CI pins 1.23.
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("spawn ts-server: %v", err)
 	}
