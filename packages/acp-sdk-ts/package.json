@@ -1,6 +1,6 @@
 {
   "name": "@xi-era/acp-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ACP (Agent-Component-Protocol) SDK & CLI — Lightweight component call protocol for AI Agent, focusing on remote service, IoT hardware and distributed business components. Bidirectional compatible with MCP & OpenAI Tool-Call.",
   "license": "MIT",
   "type": "module",

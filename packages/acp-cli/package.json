@@ -1,6 +1,6 @@
 {
   "name": "@xi-era/acp-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ACP (Agent-Component-Protocol) CLI — discover, invoke and debug remote ACP components; also serves local component modules.",
   "license": "MIT",
   "type": "module",

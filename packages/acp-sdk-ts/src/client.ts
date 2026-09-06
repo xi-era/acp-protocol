@@ -212,25 +212,22 @@ export class AcpClient {
   async #request(req: Partial<AcpRequest>, opts?: ClientRequestOptions): Promise<AcpServerMessage> {
     const transport = await this.#getTransportAsync();
     const full = await this.#fullRequest(req);
-    let reply: AcpServerMessage;
-    try {
-      reply = await withTimeout(transport.request(full, opts), this.#options.timeoutMs, full.id);
-    } catch (error) {
-      // Fallback ladder step 1 (spec v0.2 §12.2): on 40003, retry once with the
-      // highest server-supported version and lock it for this client.
-      if (
-        error instanceof AcpError &&
-        error.code === AcpErrorCode.UNSUPPORTED_VERSION &&
-        !this.#fallbackTried
-      ) {
-        const best = pickHighestSupported(error.data);
-        if (best && best !== this.#options.protocolVersion) {
-          this.#options.protocolVersion = best;
-          this.#fallbackTried = true;
-          return this.#request(req, opts);
-        }
+    const reply = await withTimeout(transport.request(full, opts), this.#options.timeoutMs, full.id);
+    // Fallback ladder step 1 (spec v0.2 §12.2): 40003 is an error FRAME, not an
+    // exception — check the resolved reply and retry once with the highest
+    // server-supported version, locking it for this client.
+    if (
+      !this.#fallbackTried &&
+      "ok" in reply &&
+      reply.ok === false &&
+      reply.error.code === AcpErrorCode.UNSUPPORTED_VERSION
+    ) {
+      const best = pickHighestSupported(reply.error.data);
+      if (best && best !== this.#options.protocolVersion) {
+        this.#options.protocolVersion = best;
+        this.#fallbackTried = true;
+        return this.#request(req, opts);
       }
-      throw error;
     }
     return reply;
   }

@@ -158,4 +158,24 @@ describe("v0.2 reserved ops over memory transport", () => {
     expect(events).toHaveLength(0);
     await client.close();
   });
+
+  it("fallback ladder: 0.2 client retries with 0.1 against a 0.1 server (spec v0.2 §12.2)", async () => {
+    const server = new AcpServer({ name: "legacy-node", protocolVersion: "0.1" });
+    server.register(
+      defineComponent({
+        id: "v2.sensor",
+        name: "Sensor",
+        description: "Emits readings",
+        handle: () => ({ ok: true }),
+      })
+    );
+    const client = await makeClient(server); // declares "0.2"
+    // First request gets 40003 -> retry with "0.1" -> success, version locked
+    const result = await client.call<{ ok: boolean }>("v2.sensor", {});
+    expect(result).toEqual({ ok: true });
+    // Subsequent requests keep using the locked version (server acp echo proves it)
+    const reply = await client.request({ op: "discover" });
+    expect((reply as { acp: string }).acp).toBe("0.1");
+    await client.close();
+  });
 });
