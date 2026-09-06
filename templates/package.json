@@ -1,0 +1,18 @@
+{
+  "name": "@xi-era/acp-templates",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Copy-paste ACP component templates: HTTP proxy, SQLite query, mock IoT (TypeScript + Python).",
+  "type": "module",
+  "scripts": {
+    "start:http-proxy": "node --experimental-strip-types src/http-proxy.ts",
+    "start:sqlite-query": "node --experimental-strip-types src/sqlite-query.ts",
+    "start:mock-iot": "node --experimental-strip-types src/mock-iot.ts"
+  },
+  "dependencies": {
+    "@xi-era/acp-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4"
+  }
+}

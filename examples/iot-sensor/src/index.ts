@@ -41,7 +41,7 @@ export function createSensorServer(opts: { intervalMs?: number } = {}): AcpServe
     defineComponent({
       id: "sensor.temperature.stream",
       name: "Temperature Stream",
-      description: "Streams n live temperature readings",
+      description: "Streams n live temperature readings (and pushes $event to subscribers)",
       version: "1.0.0",
       inputSchema: {
         type: "object",
@@ -50,9 +50,12 @@ export function createSensorServer(opts: { intervalMs?: number } = {}): AcpServe
       },
       stream: true,
       tags: ["iot", "sensor", "stream"],
-      async *handle(input: { n: number }) {
+      async *handle(input: { n: number }, ctx) {
         for (let i = 0; i < input.n; i++) {
-          yield { seq: i, celsius: reading(reads++, 21) };
+          const celsius = reading(reads++, 21);
+          // v0.2 demo: every reading is also pushed as an $event to subscribers
+          ctx.emit({ data: { seq: i, celsius } });
+          yield { seq: i, celsius };
           await new Promise((r) => setTimeout(r, intervalMs));
         }
       },
