@@ -9,7 +9,8 @@ import os
 import sqlite3
 from typing import Any
 
-from acp import AcpServer, ComponentDef
+from acp import AcpServer
+from acp.component import ComponentDef
 
 DB_PATH = os.environ.get("ACP_DB_PATH", ":memory:")
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -46,6 +47,6 @@ sqlite_query = ComponentDef(
 if __name__ == "__main__":
     server = AcpServer(name="sqlite-node", version="1.0.0")
     server.register(sqlite_query)
-    port = server.listen(port=int(os.environ.get("ACP_PORT", "8092")))
-    print(f"SQLite ACP endpoint: http://localhost:{port}/acp")
+    ws_port = server.listen(port=int(os.environ.get("ACP_PORT", "8092")))
+    print(f"HTTP ACP endpoint: http://localhost:{server.http_port}/acp  (WS: ws://localhost:{ws_port}/acp)")
     server.serve_forever()

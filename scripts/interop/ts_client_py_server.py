@@ -6,6 +6,7 @@ Boots a Python AcpServer (examples-style), then runs scripts/interop/ts-client.m
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -40,9 +41,16 @@ def main() -> int:
         text=True,
     )
     try:
-        wait_port(PORT)
+        # The server prints {"ws": N, "http": M} once both ports are up.
+        line = proc.stdout.readline().strip() if proc.stdout else ""
+        http_port = PORT
+        try:
+            http_port = int(json.loads(line)["http"])
+        except Exception:  # noqa: BLE001 — fall back to the default ws+1 layout
+            http_port = PORT + 1
+        wait_port(http_port)
         result = subprocess.run(
-            ["node", str(REPO / "scripts/interop/ts-client.mjs"), str(PORT)],
+            ["node", str(REPO / "scripts/interop/ts-client.mjs"), str(http_port)],
             cwd=REPO,
             text=True,
         )

@@ -10,7 +10,8 @@ import math
 import os
 from typing import Any, AsyncIterator
 
-from acp import AcpServer, ComponentDef
+from acp import AcpServer
+from acp.component import ComponentDef
 
 _state = {"reads": 0}
 
@@ -62,6 +63,6 @@ def build_server() -> AcpServer:
 
 if __name__ == "__main__":
     server = build_server()
-    port = server.listen(port=int(os.environ.get("ACP_PORT", "8093")))
-    print(f"Mock-IoT ACP endpoint: http://localhost:{port}/acp")
+    ws_port = server.listen(port=int(os.environ.get("ACP_PORT", "8093")))
+    print(f"HTTP ACP endpoint: http://localhost:{server.http_port}/acp  (WS: ws://localhost:{ws_port}/acp)")
     server.serve_forever()

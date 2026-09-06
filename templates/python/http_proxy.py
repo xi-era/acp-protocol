@@ -10,7 +10,8 @@ import os
 import urllib.request
 from typing import Any
 
-from acp import AcpError, AcpErrorCode, AcpServer, ComponentDef
+from acp import AcpError, AcpErrorCode, AcpServer
+from acp.component import ComponentDef
 
 ENDPOINTS: list[dict[str, Any]] = [
     {
@@ -76,6 +77,6 @@ if __name__ == "__main__":
     server = AcpServer(name="http-proxy-node", version="1.0.0")
     for comp in build_components():
         server.register(comp)
-    port = server.listen(port=int(os.environ.get("ACP_PORT", "8091")))
-    print(f"HTTP-proxy ACP endpoint: http://localhost:{port}/acp")
+    ws_port = server.listen(port=int(os.environ.get("ACP_PORT", "8091")))
+    print(f"HTTP ACP endpoint: http://localhost:{server.http_port}/acp  (WS: ws://localhost:{ws_port}/acp)")
     server.serve_forever()

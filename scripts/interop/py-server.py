@@ -2,10 +2,12 @@
 """Python ACP server for interop tests (ACP_PORT env, default 8612)."""
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, AsyncIterator
 
-from acp import AcpServer, ComponentDef
+from acp import AcpServer
+from acp.component import ComponentDef
 
 
 def echo_handle(inp: Any, ctx) -> dict[str, str]:  # noqa: ANN001
@@ -40,6 +42,8 @@ server.register(
 )
 
 if __name__ == "__main__":
-    port = server.listen(port=int(os.environ.get("ACP_PORT", "8612")))
-    print(f"ready:{port}", flush=True)
+    ws_port = server.listen(port=int(os.environ.get("ACP_PORT", "8612")))
+    # Python SDK deviation: websockets cannot share the port with HTTP,
+    # so the stdlib HTTP transport listens on server.http_port (default ws+1).
+    print(json.dumps({"ws": ws_port, "http": server.http_port}), flush=True)
     server.serve_forever()
