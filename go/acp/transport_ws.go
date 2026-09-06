@@ -85,17 +85,17 @@ type wsTransport struct {
 	keepAlive   time.Duration
 	pongTimeout time.Duration
 
-	mu            sync.Mutex
-	conn          *websocket.Conn
-	wctx          context.Context
-	wcancel       context.CancelFunc
-	pending       pendingMap
-	handlers      map[int]func(Event)
-	handlerSeq    int
-	subs          map[string]SubscriptionFilter
-	closedByUser  bool
-	keepaliveOff  bool
-	reconnecting  bool
+	mu           sync.Mutex
+	conn         *websocket.Conn
+	wctx         context.Context
+	wcancel      context.CancelFunc
+	pending      pendingMap
+	handlers     map[int]func(Event)
+	handlerSeq   int
+	subs         map[string]SubscriptionFilter
+	closedByUser bool
+	keepaliveOff bool
+	reconnecting bool
 }
 
 // newWSTransport builds the WS client transport for a ws(s):// URL.
@@ -225,6 +225,26 @@ func (t *wsTransport) dispatchEvent(ev Event) {
 	}
 }
 
+// sendText writes one raw text frame (conformance PARSE_ERROR probing).
+func (t *wsTransport) sendText(text string) error {
+	return t.writeRaw(websocket.MessageText, []byte(text))
+}
+
+// sendBinary writes one raw binary frame (conformance 40001 probing).
+func (t *wsTransport) sendBinary(data []byte) error {
+	return t.writeRaw(websocket.MessageBinary, data)
+}
+
+func (t *wsTransport) writeRaw(typ websocket.MessageType, data []byte) error {
+	t.mu.Lock()
+	c, wctx := t.conn, t.wctx
+	t.mu.Unlock()
+	if c == nil {
+		return &ACPError{Code: CodeInternalError, Message: "ws transport not connected"}
+	}
+	return c.Write(wctx, typ, data)
+}
+
 // sendFrame writes one JSON text frame; safe for concurrent use.
 func (t *wsTransport) sendFrame(f map[string]any) error {
 	t.mu.Lock()
@@ -271,7 +291,11 @@ func (t *wsTransport) RequestStream(ctx context.Context, env Envelope) (iter.Seq
 		t.pending.remove(env.ID)
 		return nil, err
 	}
-	return p.iterate(ctx), nil
+	inner := p.iterate(ctx)
+	return func(yield func(map[string]any, error) bool) {
+		defer t.pending.remove(env.ID)
+		inner(yield)
+	}, nil
 }
 
 // EventsSupported reports event capability (stateful transport).

@@ -202,15 +202,26 @@ func (c *Client) Call(ctx context.Context, componentID string, input any, out an
 // frame terminating the stream yields a *ACPError. The second return value is
 // the immediate error (e.g. transport failure), not a per-chunk error.
 func (c *Client) CallStream(ctx context.Context, componentID string, input any) (iter.Seq2[Chunk, error], error) {
-	env := Envelope{Op: "call", Component: componentID, Input: input, Stream: true}
-	frames, err := c.transportInstance().RequestStream(ctx, env)
+	env := Envelope{ACP: c.version, ID: c.nextID(), Op: "call", Component: componentID, Input: input, Stream: true}
+	cctx := ctx
+	var cancel context.CancelFunc
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && c.timeout > 0 {
+		cctx, cancel = context.WithTimeout(ctx, c.timeout)
+	}
+	frames, err := c.transportInstance().RequestStream(cctx, env)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return nil, err
 	}
 	seq := func(yield func(Chunk, error) bool) {
+		if cancel != nil {
+			defer cancel()
+		}
 		for f, ferr := range frames {
 			if ferr != nil {
-				yield(Chunk{}, ferr)
+				yield(Chunk{}, mapClientErr(ferr, env.ID, c.timeout))
 				return
 			}
 			if raw, ok := f["chunk"].(map[string]any); ok {
@@ -224,7 +235,7 @@ func (c *Client) CallStream(ctx context.Context, componentID string, input any) 
 				continue
 			}
 			if isErrFrame(f) {
-				ae, _ := asACPError(f)
+				ae := asACPError(f)
 				yield(Chunk{}, ae)
 				return
 			}
@@ -299,6 +310,7 @@ func (c *Client) request(ctx context.Context, env Envelope) (map[string]any, err
 			if best := pickHighestSupported(body.Data); best != "" && best != c.version {
 				c.version = best
 				c.fallbacked = true
+				env.ACP = best // re-declare with the locked version
 				return c.request(ctx, env)
 			}
 		}

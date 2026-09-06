@@ -76,9 +76,10 @@ func gzipAccepted(r *http.Request) bool {
 // httpStatusOfFrame maps a failure envelope to its HTTP status (spec §9.3).
 func httpStatusOfFrame(f frame) int {
 	if isErrFrame(f) {
-		if body, ok := errBodyOf(f); ok {
+		if body, ok := errBodyOf(f); ok && body.Code != 0 {
 			return ACPCodeToHTTPStatus(body.Code)
 		}
+		return http.StatusInternalServerError
 	}
 	return http.StatusOK
 }
@@ -223,13 +224,17 @@ func (s *Server) serveHTTPDiscover(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}
-	s.Handle(env, conn)
+	s.Handle(map[string]any(env), conn)
 	if !got {
 		reply = ErrorEnvelope(nil, CodeInternalError, "no reply from dispatcher", nil, ProtocolVersion)
 	}
 	if !isErrFrame(reply) {
-		s.writeBuffered(w, r, frame(reply["result"]))
-		return
+		// The result is a DiscoverResult struct; round-trip it into the
+		// generic map shape writeBuffered serializes.
+		if result, ok := jsonDecode(reply["result"]).(map[string]any); ok {
+			s.writeBuffered(w, r, result)
+			return
+		}
 	}
 	s.writeBuffered(w, r, reply)
 }

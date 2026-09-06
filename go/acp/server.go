@@ -359,7 +359,7 @@ func (s *Server) handleDiscover(req *Envelope, conn *Conn) {
 // streaming component is called without stream:true, single terminated chunk
 // wrapping for non-streaming components called with stream:true.
 func (s *Server) handleCall(req *Envelope, conn *Conn) {
-	reg, ok := s.reg.Get(req.Component)
+	reg, ok := s.reg.lookup(req.Component)
 	if !ok {
 		_ = conn.Send(ErrorEnvelope(req.ID, CodeComponentNotFound,
 			fmt.Sprintf("component not found: %s", req.Component), nil, req.ACP))
@@ -500,7 +500,7 @@ func (s *Server) Emit(ev Event) {
 	s.mu.Unlock()
 
 	for _, conn := range conns {
-		if len(conn.snapshotSubs()) == 0 {
+		if !connMatches(conn, ev.Component, tags) {
 			continue
 		}
 		// Bounded queue: count in-flight event frames, drop new ones when
@@ -512,6 +512,34 @@ func (s *Server) Emit(ev Event) {
 		_ = conn.Send(f)
 		conn.backlog.Add(-1)
 	}
+}
+
+// connMatches reports whether any of the connection's subscriptions matches
+// the event (spec v0.2 §6.2): component subscriptions compare the event's
+// component id; tag subscriptions require sub.tags ⊆ event tags.
+func connMatches(conn *Conn, component string, tags []string) bool {
+	for _, sub := range conn.snapshotSubs() {
+		if sub.component != "" {
+			if sub.component == component {
+				return true
+			}
+			continue
+		}
+		if sub.tags == nil || len(tags) == 0 {
+			continue
+		}
+		match := true
+		for _, t := range sub.tags {
+			if !containsString(tags, t) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 // ServeStdio serves the registry over a line-delimited JSON stream

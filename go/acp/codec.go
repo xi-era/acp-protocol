@@ -165,6 +165,12 @@ func ErrorEnvelope(id any, code int, message string, data any, acp string) map[s
 func ValidateEnvelope(raw any, serverVersion string) (*Envelope, *EnvelopeError) {
 	m, isMap := raw.(map[string]any)
 	if !isMap {
+		// Accept the SDK's internal frame alias as well.
+		if f, ok := raw.(frame); ok {
+			m, isMap = f, true
+		}
+	}
+	if !isMap {
 		return nil, &EnvelopeError{Code: CodeInvalidEnvelope, Message: "request must be a JSON object"}
 	}
 

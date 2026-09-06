@@ -57,15 +57,15 @@ type Event struct {
 
 // ComponentDescriptor is the discover reply unit (spec §7.2).
 type ComponentDescriptor struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Version     string         `json:"version"`
-	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	Version      string          `json:"version"`
+	InputSchema  json.RawMessage `json:"inputSchema,omitempty"`
 	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
-	Stream      bool           `json:"stream"`
-	Tags        []string       `json:"tags,omitempty"`
-	Meta        map[string]any `json:"meta,omitempty"`
+	Stream       bool            `json:"stream"`
+	Tags         []string        `json:"tags,omitempty"`
+	Meta         map[string]any  `json:"meta,omitempty"`
 }
 
 // ServerInfo is the server self-description included in every discover result.
@@ -127,14 +127,20 @@ func isErrFrame(f map[string]any) bool {
 	return isBool && !b
 }
 
-// errBodyOf extracts the error body from a decoded failure envelope.
+// errBodyOf extracts the error body from a decoded failure envelope. The code
+// may be float64 (JSON-decoded) or int (in-memory frames).
 func errBodyOf(f map[string]any) (ErrorBody, bool) {
 	raw, ok := f["error"].(map[string]any)
 	if !ok {
 		return ErrorBody{}, false
 	}
 	var body ErrorBody
-	if code, ok := raw["code"].(float64); ok {
+	switch code := raw["code"].(type) {
+	case float64:
+		body.Code = int(code)
+	case int:
+		body.Code = code
+	case int64:
 		body.Code = int(code)
 	}
 	if msg, ok := raw["message"].(string); ok {

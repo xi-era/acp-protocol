@@ -33,14 +33,23 @@ func NewMemoryTransport(srv *Server) *MemoryTransport {
 var _ Transport = (*MemoryTransport)(nil)
 
 // ensureConn lazily creates the persistent connection and registers it with
-// the server (lifecycle onConnection).
+// the server (lifecycle onConnection). Frames are JSON round-tripped so the
+// client sees exactly the decoded shape other transports deliver.
 func (t *MemoryTransport) ensureConn() *Conn {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil {
 		t.conn = &Conn{Meta: map[string]any{"transport": "memory"}, Ctx: context.Background()}
 		t.conn.send = func(f frame) error {
-			t.route(f)
+			b, err := json.Marshal(f)
+			if err != nil {
+				return err
+			}
+			var out map[string]any
+			if err := json.Unmarshal(b, &out); err != nil {
+				return err
+			}
+			t.route(out)
 			return nil
 		}
 		t.srv.attach(t.conn)
@@ -100,7 +109,12 @@ func (t *MemoryTransport) Request(ctx context.Context, env Envelope) (map[string
 		defer close(done)
 		t.srv.Handle(raw, conn)
 	}()
-	<-done
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.pending.remove(env.ID)
+		return nil, ctx.Err()
+	}
 
 	if f, ok := p.pop(); ok && isTerminalFrame(f) {
 		t.pending.remove(env.ID)

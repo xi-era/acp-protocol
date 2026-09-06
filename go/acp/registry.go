@@ -75,6 +75,14 @@ func (r *Registry) Get(id string) (Component, bool) {
 	return reg.comp, true
 }
 
+// lookup returns the internal registration (compiled validators included).
+func (r *Registry) lookup(id string) (*registered, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	reg, ok := r.comps[id]
+	return reg, ok
+}
+
 // Has reports whether a component with the id is registered.
 func (r *Registry) Has(id string) bool {
 	r.mu.RLock()

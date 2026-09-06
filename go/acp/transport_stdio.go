@@ -159,7 +159,11 @@ func (t *StdioClientTransport) RequestStream(ctx context.Context, env Envelope) 
 		t.pending.remove(env.ID)
 		return nil, err
 	}
-	return p.iterate(ctx), nil
+	inner := p.iterate(ctx)
+	return func(yield func(map[string]any, error) bool) {
+		defer t.pending.remove(env.ID)
+		inner(yield)
+	}, nil
 }
 
 // Close stops the read loop's source; the underlying streams are caller-owned.
