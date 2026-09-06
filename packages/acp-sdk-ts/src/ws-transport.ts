@@ -10,7 +10,7 @@ import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { AcpErrorCode } from "./errors.js";
 import { PROTOCOL_VERSION, errorEnvelope } from "./codec.js";
 import type { AcpRequest, AcpServerMessage } from "./types.js";
-import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport } from "./transport.js";
+import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport, TransportLifecycle } from "./transport.js";
 
 // ---------------------------------------------------------------------------
 // Server side
@@ -35,8 +35,8 @@ export class WsServerTransport implements ServerTransport {
     this.#options = options;
   }
 
-  async start(dispatch: ServerDispatch): Promise<void> {
-    this.#wss = new WebSocketServer({ noServer: true });
+  async start(dispatch: ServerDispatch, lifecycle?: TransportLifecycle): Promise<void> {
+    this.#wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
     this.#wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       this.#connections.add(ws);
@@ -46,6 +46,8 @@ export class WsServerTransport implements ServerTransport {
         send: (msg) => ws.send(JSON.stringify(msg)),
         close: async () => ws.close(),
       };
+      lifecycle?.onConnection?.(conn);
+      ws.on("close", () => lifecycle?.onDisconnect?.(conn));
       ws.on("message", (data: unknown) => {
         let parsed: unknown;
         try {

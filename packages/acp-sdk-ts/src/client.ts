@@ -4,6 +4,7 @@
  * (e.g. MemoryClientTransport for tests and adapters).
  */
 import { AcpError, AcpErrorCode } from "./errors.js";
+import type { AcpEvent } from "./types.js";
 import { PROTOCOL_VERSION } from "./codec.js";
 import type { AcpRequest, AcpChunk, ComponentDescriptor } from "./types.js";
 import type { ClientRequestOptions, ClientTransport } from "./transport.js";
@@ -29,6 +30,17 @@ export interface AcpReply {
   id: string | null;
   ok: true;
   result: unknown;
+}
+
+/** Filter for event subscriptions: exactly one of component / tags. */
+export interface AcpSubscriptionFilter {
+  component?: string;
+  tags?: string[];
+}
+
+/** Handle returned by AcpClient.subscribe. */
+export interface AcpSubscription {
+  unsubscribe(): Promise<void>;
 }
 
 export class AcpClient {
@@ -110,7 +122,9 @@ export class AcpClient {
       if ("chunk" in msg) {
         yield msg.chunk;
         if (msg.chunk.end) return;
-      } else if (msg.ok === false) {
+      } else if ("event" in msg) {
+        continue; // events are routed via onEvent, not call streams
+      } else if ("ok" in msg && msg.ok === false) {
         throw AcpError.from(msg.error);
       } else {
         return; // one-shot reply to a stream request: nothing to iterate
@@ -132,6 +146,39 @@ export class AcpClient {
 
   async close(): Promise<void> {
     await (await this.#getTransportAsync()).close();
+  }
+
+  /**
+   * Subscribes to server events (spec v0.2 §4.4). Exactly one of
+   * `filter.component` / `filter.tags` must be set. Throws AcpError(50100)
+   * on transports without event support (e.g. HTTP).
+   */
+  async subscribe(
+    filter: { component?: string; tags?: string[] },
+    handler: (event: AcpEvent) => void
+  ): Promise<AcpSubscription> {
+    if ((filter.component !== undefined) === (filter.tags !== undefined)) {
+      throw new AcpError(
+        AcpErrorCode.INVALID_ENVELOPE,
+        "subscription filter requires exactly one of component/tags"
+      );
+    }
+    const transport = await this.#getTransportAsync();
+    if (!transport.eventsSupported?.() || !transport.onEvent) {
+      throw new AcpError(
+        AcpErrorCode.EVENT_UNSUPPORTED,
+        "events unsupported on connectionless transport"
+      );
+    }
+    const off = transport.onEvent(handler);
+    this.#assertOk(await this.#request({ op: "$subscribe", input: filter }));
+    return {
+      unsubscribe: async () => {
+        off();
+        const reply = await this.#request({ op: "$unsubscribe", input: filter });
+        this.#assertOk(reply);
+      },
+    };
   }
 
   async #getTransportAsync(): Promise<ClientTransport> {
@@ -173,7 +220,8 @@ export class AcpClient {
 type AcpServerMessage =
   | { acp: string; id: string; ok: true; result: unknown }
   | { acp: string; id: string | null; ok: false; error: { code: number; message: string; data?: unknown } }
-  | { acp: string; id: string; chunk: AcpChunk };
+  | { acp: string; id: string; chunk: AcpChunk }
+  | { acp: string; id: null; event: { component?: string; tags?: string[]; data: unknown; ts?: number } };
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, id: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

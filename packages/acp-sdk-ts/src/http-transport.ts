@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import { AcpErrorCode, acpCodeToHttpStatus } from "./errors.js";
 import { PROTOCOL_VERSION, errorEnvelope } from "./codec.js";
 import type { AcpRequest, AcpServerMessage } from "./types.js";
-import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport } from "./transport.js";
+import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport, TransportLifecycle } from "./transport.js";
 
 // ---------------------------------------------------------------------------
 // Server side
@@ -36,7 +36,7 @@ export class HttpServerTransport implements ServerTransport {
     return typeof addr === "object" && addr !== null ? addr.port : 0;
   }
 
-  async start(dispatch: ServerDispatch): Promise<void> {
+  async start(dispatch: ServerDispatch, _lifecycle?: TransportLifecycle): Promise<void> {
     this.#dispatch = dispatch;
     if (this.#options.server) {
       this.#server = this.#options.server;

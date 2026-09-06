@@ -7,7 +7,7 @@ import type { Readable, Writable } from "node:stream";
 import { AcpErrorCode } from "./errors.js";
 import { errorEnvelope } from "./codec.js";
 import type { AcpRequest, AcpServerMessage } from "./types.js";
-import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport } from "./transport.js";
+import type { ClientRequestOptions, ClientTransport, Connection, ServerDispatch, ServerTransport, TransportLifecycle } from "./transport.js";
 
 // ---------------------------------------------------------------------------
 // Server side
@@ -20,19 +20,24 @@ export interface StdioServerTransportOptions {
 
 export class StdioServerTransport implements ServerTransport {
   readonly #options: StdioServerTransportOptions;
+  #conn: Connection | undefined;
+  #lifecycle: TransportLifecycle | undefined;
 
   constructor(options: StdioServerTransportOptions = {}) {
     this.#options = options;
   }
 
-  async start(dispatch: ServerDispatch): Promise<void> {
+  async start(dispatch: ServerDispatch, lifecycle?: TransportLifecycle): Promise<void> {
     const input = this.#options.input ?? process.stdin;
     const output = this.#options.output ?? process.stdout;
+    this.#lifecycle = lifecycle;
     const conn: Connection = {
       meta: { transport: "stdio" },
       send: (msg) => output.write(JSON.stringify(msg) + "\n"),
       close: async () => {},
     };
+    lifecycle?.onConnection?.(conn);
+    this.#conn = conn;
     const rl = createInterface({ input, terminal: false });
     rl.on("line", (line) => {
       const trimmed = line.trim();
@@ -48,7 +53,10 @@ export class StdioServerTransport implements ServerTransport {
     });
   }
 
-  async stop(): Promise<void> {}
+  async stop(): Promise<void> {
+    if (this.#conn) this.#lifecycle?.onDisconnect?.(this.#conn);
+    this.#conn = undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

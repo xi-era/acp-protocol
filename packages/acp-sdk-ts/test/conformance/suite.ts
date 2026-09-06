@@ -8,18 +8,21 @@ import { AcpError, AcpErrorCode } from "../../src/errors.js";
 
 export interface ConformanceContext {
   client: AcpClient;
+  /** Protocol version the server reports; default "0.2". */
+  protocolVersion?: string;
   /** Sends raw non-JSON text; used to assert PARSE_ERROR. Optional per transport. */
   sendRaw?: (text: string) => Promise<{ ok: false; error: { code: number } }>;
 }
 
 export async function runConformanceSuite(ctx: ConformanceContext): Promise<void> {
+  const protocolVersion = ctx.protocolVersion ?? "0.2";
   const { client } = ctx;
 
   // spec §4.1 discover: fixed result shape with server info
   const reply = await client.request({ op: "discover" });
   expect(reply.ok).toBe(true);
   const result = reply.result as { server: { name: string; protocol: string }; components: { id: string }[] };
-  expect(result.server.protocol).toBe("0.1");
+  expect(result.server.protocol).toBe(protocolVersion);
   expect(result.components.map((c) => c.id)).toEqual(
     expect.arrayContaining(["conf.echo", "conf.counter", "conf.failing"])
   );
@@ -65,7 +68,11 @@ export async function runConformanceSuite(ctx: ConformanceContext): Promise<void
   };
   expect(badVersion.ok).toBe(false);
   expect(badVersion.error.code).toBe(AcpErrorCode.UNSUPPORTED_VERSION);
-  expect(badVersion.error.data?.supported).toContain("0.1");
+  expect(badVersion.error.data?.supported).toContain(protocolVersion);
+
+  // spec v0.2 §5.3: responses echo the request's acp value
+  const echo = await client.request({ op: "discover" });
+  expect((echo as { acp?: string }).acp ?? "absent").toBe("0.2");
 
   // spec §13 meta ignored
   const withMeta = await client.request({
