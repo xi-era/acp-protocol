@@ -1,6 +1,6 @@
 {
   "name": "@xi-era/acp-adapter-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ACP (Agent-Component-Protocol) <-> MCP bidirectional bridge — expose ACP components as MCP tools for Claude/Cursor, and wrap MCP tools as ACP components.",
   "license": "MIT",
   "type": "module",

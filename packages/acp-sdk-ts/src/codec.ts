@@ -5,7 +5,15 @@
 import type { AcpErrorFrame, AcpRequest } from "./types.js";
 import { AcpErrorCode } from "./errors.js";
 
-export const PROTOCOL_VERSION = "0.1";
+export const PROTOCOL_VERSION = "0.2";
+
+/** Reserved `$`-prefixed ops (spec v0.2 §4.3-4.4). */
+export const RESERVED_OPS = ["$ping", "$subscribe", "$unsubscribe"] as const;
+export type ReservedOp = (typeof RESERVED_OPS)[number];
+
+export function isReservedOp(op: string): op is ReservedOp {
+  return (RESERVED_OPS as readonly string[]).includes(op);
+}
 
 const COMPONENT_ID_RE = /^[a-z][a-z0-9-]{0,62}(\.[a-z][a-z0-9-]{0,62}){1,3}$/;
 
@@ -38,16 +46,43 @@ export function isVersionSupported(clientVersion: string, serverVersion: string)
   return c[0] === s[0] && s[1] >= c[1];
 }
 
-/** Builds an error envelope; `id` is null when the request id could not be read. */
+/** Builds an error envelope; `id` is null when the request id could not be read.
+ *  `acp` echoes the request's declared version (spec v0.2 §5.3). */
 export function errorEnvelope(
   id: string | null,
   code: number,
   message: string,
-  data?: unknown
+  data?: unknown,
+  acp: string = PROTOCOL_VERSION
 ): AcpErrorFrame {
   const error: AcpErrorFrame["error"] = { code, message };
   if (data !== undefined) error.data = data;
-  return { acp: PROTOCOL_VERSION, id, ok: false, error };
+  return { acp, id, ok: false, error };
+}
+
+/** Validates reserved-op input shapes (spec v0.2 §4.3-4.4); null when valid. */
+export function validateReservedInput(op: string, input: unknown): string | null {
+  if (op === "$ping") return null; // input optional; any shape accepted (ts echoed if present)
+  if (op === "$subscribe" || op === "$unsubscribe") {
+    // $unsubscribe with absent/null input = unsubscribe all (valid).
+    if (op === "$unsubscribe" && (input === undefined || input === null)) return null;
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return `op=${op} requires an input object with exactly one of component/tags`;
+    }
+    const { component, tags } = input as { component?: unknown; tags?: unknown };
+    const hasComponent = component !== undefined;
+    const hasTags = tags !== undefined;
+    if (hasComponent === hasTags) {
+      return `op=${op} requires exactly one of component/tags`;
+    }
+    if (hasComponent && !isValidComponentId(component)) {
+      return `op=${op}: invalid component id`;
+    }
+    if (hasTags && (!Array.isArray(tags) || tags.length === 0 || tags.some((t) => typeof t !== "string"))) {
+      return `op=${op}: tags must be a non-empty string array`;
+    }
+  }
+  return null;
 }
 
 export type EnvelopeValidation =
@@ -76,8 +111,12 @@ export function validateEnvelope(raw: unknown): EnvelopeValidation {
   if (typeof req.op !== "string") {
     return { ok: false, id, code: AcpErrorCode.INVALID_ENVELOPE, message: "missing required field: op" };
   }
-  if (req.op !== "discover" && req.op !== "call") {
+  if (req.op !== "discover" && req.op !== "call" && !isReservedOp(req.op)) {
     return { ok: false, id, code: AcpErrorCode.UNKNOWN_OP, message: `unknown op: ${req.op}` };
+  }
+  if (isReservedOp(req.op)) {
+    const err = validateReservedInput(req.op, req.input);
+    if (err) return { ok: false, id, code: AcpErrorCode.INVALID_ENVELOPE, message: err };
   }
   if (req.component !== undefined && !isValidComponentId(req.component)) {
     return {

@@ -7,16 +7,25 @@ import type { AcpRequest } from "./types.js";
 import type { ComponentDescriptor } from "./types.js";
 import type { Connection } from "./transport.js";
 
+/** Outgoing event, spec v0.2 §6.2. Component and tags default to the emitting component. */
+export interface OutgoingEvent {
+  tags?: string[];
+  data: unknown;
+  ts?: number;
+}
+
 /** Per-call context handed to component handlers. */
 export interface CallContext {
   /** The connection the request arrived on. */
   conn: Connection;
-  /** The raw request envelope (meta included; v0.1 servers ignore meta). */
+  /** The raw request envelope (meta included; servers ignore meta semantics). */
   request: AcpRequest;
   /** Shorthand for request.meta. */
   meta?: AcpRequest["meta"];
   /** Aborted when the underlying connection closes or the client cancels. */
   signal: AbortSignal;
+  /** Push an $event to all subscribers of this component (spec v0.2 §6.2). */
+  emit(event: OutgoingEvent): void;
 }
 
 export type ComponentHandle<I, O> = (

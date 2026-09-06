@@ -71,6 +71,36 @@ describe("conformance: HTTP", () => {
     await client.close();
   });
 
+  it("rejects $subscribe with 50100 EVENT_UNSUPPORTED (spec v0.2 §4.4)", async () => {
+    const client = new AcpClient({ url: `http://127.0.0.1:${port}/acp`, timeoutMs: 5_000 });
+    await expect(client.subscribe({ component: "conf.echo" }, () => {})).rejects.toMatchObject({
+      code: 50100,
+    });
+    await client.close();
+  });
+
+  it("serves gzip responses above the 1KB threshold (spec v0.2 §9.4)", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/acp/discover`, {
+      headers: { "accept-encoding": "gzip" },
+    });
+    // discover payloads here are small (<1KB) so they must stay uncompressed
+    expect(res.headers.get("content-encoding")).toBeNull();
+    const big = await fetch(`http://127.0.0.1:${port}/acp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "accept-encoding": "gzip" },
+      body: JSON.stringify({
+        acp: "0.2",
+        id: "gz1",
+        op: "call",
+        component: "conf.echo",
+        input: { msg: "x".repeat(3000) },
+      }),
+    });
+    expect(big.headers.get("content-encoding")).toBe("gzip");
+    const body = (await big.json()) as { result: { msg: string } };
+    expect(body.result.msg).toHaveLength(3000);
+  });
+
   it("serves GET /acp/discover (spec §9.1 SHOULD)", async () => {
     const res = await fetch(`http://127.0.0.1:${port}/acp/discover`);
     expect(res.status).toBe(200);
@@ -113,7 +143,7 @@ describe("conformance: WebSocket", () => {
   it("passes the conformance suite", async () => {
     const client = new AcpClient({ url: `ws://127.0.0.1:${port}/acp`, timeoutMs: 5_000 });
     await client.connect();
-    await runConformanceSuite({ client });
+    await runConformanceSuite({ client, emit: (c, d) => server.emit({ component: c, data: d }) });
     await client.close();
   });
 

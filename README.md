@@ -21,8 +21,8 @@ MCP 聚焦本地子进程工具调用;
 > 重要声明:**ACP 不替代 MCP,双向桥接、生态互通、能力互补。**
 
 - Repo: <https://github.com/xi-era/acp-protocol>
-- NPM: `@xi-era/acp-sdk` / `@xi-era/acp-cli`
-- 协议规范: [spec/ACP-0.1-SPEC.md](spec/ACP-0.1-SPEC.md)
+- NPM: `@xi-era/acp-sdk` / `@xi-era/acp-cli` · PyPI: `acp-protocol-sdk` · Go: `go get github.com/xi-era/acp-protocol/go`
+- 协议规范: [spec/ACP-0.2-SPEC.md](spec/ACP-0.2-SPEC.md)(当前)· [spec/ACP-0.1-SPEC.md](spec/ACP-0.1-SPEC.md)(存档)
 - 企业版与商业合作: [COMMERCIAL.md](COMMERCIAL.md)
 
 ---
@@ -81,7 +81,7 @@ ACP 主打**远程优先、硬件友好、分布式原生**,与 MCP 完全互补
 - 🛠 **完备工程工具链** — 提供多语言 acp-sdk + acp-cli 调试工具,支持本地调试、远程部署、元件快速发布。
 - 🔐 **企业级安全预留** — 原生预留鉴权、权限域、访问控制、审计日志、调用溯源字段,适配私有化企业场景。
 - 📜 **稳定版本策略** — 严格语义化版本迭代,保证向前兼容,支持长期生产环境落地。
-- 🔁 **MCP 生态互通** — ACP 元件可快速暴露为 MCP 标准接口,零成本融入现有成熟 MCP 客户端生态。
+- 🔁 **MCP 生态互通** — ACP 元件可快速暴露为 MCP 标准接口,零成本融入现有成熟 MCP 客户端生态。[指南:Cursor / Claude Desktop 桥接远程元件 →](docs/guides/cursor-mcp-bridge.md)
 
 > 定位重申:**ACP 与 MCP 互补共生,非替代竞争关系**
 
@@ -174,9 +174,10 @@ ACP 不做重复的 AI 对话工具、编码工具。
 
 ## 十一、路线图
 
-- **v0.1(MVP)**:协议规范、TypeScript SDK、CLI、MCP/OpenAI 适配器、Demo — 详见 [docs/roadmap.md](docs/roadmap.md)
-- **v0.2(生态扩展)**:Python/Go SDK、心跳保活、报文压缩、LangChain 集成、元件模板库
-- **v1.0(商业化)**:ACP-Gateway、权限管控、审计溯源、SSO、私有化部署
+- ✅ **v0.1(MVP)**:协议规范、TypeScript SDK、CLI、MCP/OpenAI 适配器、Demo — 详见 [docs/roadmap.md](docs/roadmap.md)
+- ✅ **v0.2(生态扩展)**:心跳保活(`$ping`)、事件推送(`$event`)、报文压缩(gzip / permessage-deflate)、[Python SDK](sdk/python/README.md)(含 LangChain 集成)、[Go SDK](go/)、[元件模板库](templates/)、[Cursor 桥接指南](docs/guides/cursor-mcp-bridge.md)、三方互操作测试 — 变更清单见 [CHANGELOG](CHANGELOG.md)
+- ⬜ **v0.2.1**:Python `[aio]` extras(aiohttp `AsyncAcpClient`,在 CI 上验证 asyncio 路径)
+- ⬜ **v1.0(商业化)**:ACP-Gateway、权限管控、审计溯源、SSO、私有化部署
 
 ## 十二、License
 

@@ -70,7 +70,7 @@ describe("AcpServer over memory transport (spec conformance, core)", () => {
     const client = makeClient(makeServer());
     await client.connect();
     const { server, components } = (await client.request({ op: "discover" })).result as any;
-    expect(server).toEqual({ name: "test-node", version: "1.2.3", protocol: "0.1" });
+    expect(server).toEqual({ name: "test-node", version: "1.2.3", protocol: "0.2" });
     const ids = components.map((c: any) => c.id);
     expect(ids).toContain("test.echo");
     expect(ids).toContain("test.counter");
@@ -139,7 +139,7 @@ describe("AcpServer over memory transport (spec conformance, core)", () => {
     expect(reply).toMatchObject({
       ok: false,
       id: "v1",
-      error: { code: AcpErrorCode.UNSUPPORTED_VERSION, data: { supported: ["0.1"] } },
+      error: { code: AcpErrorCode.UNSUPPORTED_VERSION, data: { supported: ["0.2"] } },
     });
     await transport.close();
   });
