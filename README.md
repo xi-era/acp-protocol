@@ -21,8 +21,8 @@ MCP 聚焦本地子进程工具调用;
 > 重要声明:**ACP 不替代 MCP,双向桥接、生态互通、能力互补。**
 
 - Repo: <https://github.com/xi-era/acp-protocol>
-- NPM: `@xi-era/acp-sdk` / `@xi-era/acp-cli`
-- 协议规范: [spec/ACP-0.1-SPEC.md](spec/ACP-0.1-SPEC.md)
+- NPM: `@xi-era/acp-sdk` / `@xi-era/acp-cli` · PyPI: `acp-protocol-sdk` · Go: `go get github.com/xi-era/acp-protocol/go`
+- 协议规范: [spec/ACP-0.2-SPEC.md](spec/ACP-0.2-SPEC.md)(当前)· [spec/ACP-0.1-SPEC.md](spec/ACP-0.1-SPEC.md)(存档)
 - 企业版与商业合作: [COMMERCIAL.md](COMMERCIAL.md)
 
 ---
